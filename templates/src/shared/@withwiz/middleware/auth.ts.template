@@ -1,0 +1,211 @@
+/**
+ * 인증 미들웨어
+ *
+ * - JWT 토큰 검증
+ * - 사용자 정보 context에 추가
+ * - 인증 실패 시 401 에러
+ *
+ * 참고: 실제 프로젝트에서는 @withwiz/auth/core/jwt 등 JWT 라이브러리 사용 권장
+ */
+
+import { NextResponse } from 'next/server';
+import type { TApiMiddleware } from './types';
+import { verify } from 'jsonwebtoken';
+
+// ============================================================================
+// JWT 설정 (환경 변수 기반)
+// ============================================================================
+
+let _jwtWarningLogged = false;
+
+/**
+ * JWT Secret 가져오기
+ */
+function getJwtSecret(): string | null {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    if (!_jwtWarningLogged) {
+      console.warn(
+        '[Auth Middleware] JWT_SECRET not configured. Authentication is DISABLED.\n' +
+          'Protected routes will fail. Set JWT_SECRET environment variable to enable auth.'
+      );
+      _jwtWarningLogged = true;
+    }
+    return null;
+  }
+
+  if (secret.length < 32) {
+    console.error(
+      '[Auth Middleware] JWT_SECRET must be at least 32 characters long'
+    );
+    return null;
+  }
+
+  return secret;
+}
+
+/**
+ * Authorization 헤더에서 토큰 추출
+ */
+function extractToken(authHeader: string | null): string | null {
+  if (!authHeader) return null;
+
+  if (authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+
+  return null;
+}
+
+// ============================================================================
+// 인증 미들웨어
+// ============================================================================
+
+/**
+ * 인증 미들웨어
+ *
+ * Authorization 헤더에서 JWT 토큰을 추출하고 검증합니다.
+ * 검증된 사용자 정보를 context.user에 추가합니다.
+ *
+ * @example
+ * ```typescript
+ * const chain = new MiddlewareChain()
+ *   .use(authMiddleware);
+ * ```
+ */
+export const authMiddleware: TApiMiddleware = async (context, next) => {
+  try {
+    const secret = getJwtSecret();
+
+    // JWT Secret이 설정되지 않음
+    if (!secret) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 40101,
+            message: 'Authentication not configured',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
+    // Authorization 헤더에서 토큰 추출
+    const authHeader = context.request.headers.get('authorization');
+    const token = extractToken(authHeader);
+
+    if (!token) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 40101,
+            message: 'Authentication required',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
+    // JWT 토큰 검증
+    const payload = verify(token, secret) as {
+      userId: string;
+      email?: string;
+      role?: string;
+    };
+
+    // 사용자 정보 context에 추가
+    context.user = {
+      id: payload.userId,
+      email: payload.email ?? '',
+      name: undefined,
+      role: payload.role === 'ADMIN' ? 'ADMIN' : 'USER',
+    };
+  } catch (error: any) {
+    // 토큰 만료
+    if (error.name === 'TokenExpiredError') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 40103,
+            message: 'Token expired',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
+    // 그 외 검증 실패
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 40102,
+          message: 'Invalid token',
+        },
+      },
+      { status: 401 }
+    );
+  }
+
+  return await next();
+};
+
+/**
+ * 관리자 권한 검증 미들웨어
+ *
+ * authMiddleware 이후에 실행되어야 합니다.
+ * context.user가 없거나 role이 admin이 아니면 403 에러를 발생시킵니다.
+ *
+ * @example
+ * ```typescript
+ * const chain = new MiddlewareChain()
+ *   .use(authMiddleware)
+ *   .use(adminMiddleware);
+ * ```
+ */
+export const adminMiddleware: TApiMiddleware = async (context, next) => {
+  if (!context.user) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 40101,
+          message: 'Authentication required',
+        },
+      },
+      { status: 401 }
+    );
+  }
+
+  if (context.user.role !== 'ADMIN') {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 40301,
+          message: 'Admin access required',
+        },
+      },
+      { status: 403 }
+    );
+  }
+
+  return await next();
+};
+
+/**
+ * Auth Middleware 초기화 (서버 시작 시 호출)
+ */
+export function initializeAuthMiddleware(): boolean {
+  const secret = getJwtSecret();
+  if (secret) {
+    console.log(
+      `[Auth Middleware] Initialized - Access: ${process.env.JWT_EXPIRES_IN || '7d'}, Refresh: ${process.env.JWT_REFRESH_TOKEN_EXPIRES_IN || '30d'}`
+    );
+  }
+  return secret !== null;
+}

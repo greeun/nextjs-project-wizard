@@ -1,0 +1,22 @@
+#!/bin/sh
+# Production server start script
+
+cd "$(dirname "$0")/.." || exit
+
+# 환경 변수 파일 확인
+ENV_FILE="${START_ENV_FILE:-.env.production}"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "⚠️ Warning: $ENV_FILE not found. Using defaults."
+fi
+
+# NODE_ENV 설정
+export NODE_ENV=production
+
+echo "🚀 Starting production server..."
+
+if [ -f "$ENV_FILE" ]; then
+  dotenv -e "$ENV_FILE" -o -- next start
+else
+  next start
+fi

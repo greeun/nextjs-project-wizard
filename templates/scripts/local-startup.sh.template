@@ -1,0 +1,35 @@
+#!/bin/bash
+# Local development server startup script
+
+set -e
+
+# Load environment variables from .env.local
+if [ -f ".env.local" ]; then
+  echo "Loading .env.local..."
+  export $(grep -v '^#' .env.local | xargs)
+else
+  echo "Warning: .env.local not found. Creating from .env.example..."
+  if [ -f ".env.example" ]; then
+    cp .env.example .env.local
+    echo "Created .env.local from .env.example. Please configure it."
+  else
+    echo "Error: .env.example not found either."
+    exit 1
+  fi
+fi
+
+# Check if node_modules exists
+if [ ! -d "node_modules" ]; then
+  echo "Installing dependencies..."
+  npm install
+fi
+
+# Generate Prisma client if prisma schema exists
+if [ -f "prisma/schema.prisma" ]; then
+  echo "Generating Prisma client..."
+  npx prisma generate
+fi
+
+# Start development server
+echo "Starting development server..."
+npm run dev

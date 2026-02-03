@@ -1,0 +1,190 @@
+/**
+ * Rate Limit 미들웨어
+ *
+ * - IP 기반 Rate Limiting
+ * - In-Memory 기본 구현 (Redis 연동 시 어댑터 교체)
+ * - 초과 시 429 에러
+ */
+
+import { NextResponse } from 'next/server';
+import type { TApiMiddleware } from './types';
+
+// ============================================================================
+// Rate Limit 설정
+// ============================================================================
+
+interface IRateLimitConfig {
+  /** 요청 제한 횟수 */
+  limit: number;
+  /** 윈도우 시간 (초) */
+  windowSec: number;
+}
+
+// 기본 Rate Limit 설정
+const DEFAULT_CONFIGS: Record<string, IRateLimitConfig> = {
+  api: { limit: 120, windowSec: 60 }, // 분당 120회
+  auth: { limit: 40, windowSec: 3600 }, // 시간당 40회
+  admin: { limit: 200, windowSec: 60 }, // 분당 200회
+};
+
+// ============================================================================
+// In-Memory Rate Limiter (기본 구현)
+// ============================================================================
+
+interface IRateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const rateLimitStore = new Map<string, IRateLimitEntry>();
+
+/**
+ * Rate Limit 체크 (In-Memory)
+ */
+async function checkRateLimit(
+  identifier: string,
+  config: IRateLimitConfig
+): Promise<{ success: boolean; remaining: number; resetIn: number }> {
+  const now = Date.now();
+  const key = identifier;
+  const entry = rateLimitStore.get(key);
+
+  // 새 윈도우 또는 만료된 엔트리
+  if (!entry || entry.resetAt <= now) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetAt: now + config.windowSec * 1000,
+    });
+    return {
+      success: true,
+      remaining: config.limit - 1,
+      resetIn: config.windowSec,
+    };
+  }
+
+  // 기존 윈도우 내 요청
+  entry.count++;
+  const remaining = Math.max(0, config.limit - entry.count);
+  const resetIn = Math.ceil((entry.resetAt - now) / 1000);
+
+  if (entry.count > config.limit) {
+    return { success: false, remaining: 0, resetIn };
+  }
+
+  return { success: true, remaining, resetIn };
+}
+
+/**
+ * 클라이언트 IP 추출
+ */
+function extractClientIp(headers: Headers): string {
+  // Cloudflare
+  const cfIp = headers.get('cf-connecting-ip');
+  if (cfIp) return cfIp;
+
+  // X-Forwarded-For (프록시)
+  const forwardedFor = headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const ips = forwardedFor.split(',').map((ip) => ip.trim());
+    return ips[0] || 'unknown';
+  }
+
+  // X-Real-IP
+  const realIp = headers.get('x-real-ip');
+  if (realIp) return realIp;
+
+  return 'unknown';
+}
+
+// ============================================================================
+// Rate Limit 미들웨어
+// ============================================================================
+
+/**
+ * Rate Limit 타입
+ */
+export type TRateLimitType = 'api' | 'auth' | 'admin' | string;
+
+/**
+ * Rate Limit 미들웨어 팩토리
+ *
+ * @param type - Rate limit 타입 ('api', 'auth', 'admin' 등)
+ *
+ * @example
+ * ```typescript
+ * const chain = new MiddlewareChain()
+ *   .use(createRateLimitMiddleware('api'));
+ * ```
+ */
+export function createRateLimitMiddleware(type: TRateLimitType): TApiMiddleware {
+  return async (context, next) => {
+    // Rate Limit 비활성화 체크
+    if (process.env.RATE_LIMIT_ENABLED === 'false') {
+      return await next();
+    }
+
+    // IP 주소 추출
+    const ip = extractClientIp(context.request.headers);
+
+    // 사용자 인증 정보가 있으면 userId 사용, 없으면 IP 사용
+    const identifier = context.user
+      ? `${type}:user:${context.user.id}`
+      : `${type}:ip:${ip}`;
+
+    // Rate limit 설정 가져오기
+    const config = DEFAULT_CONFIGS[type] || DEFAULT_CONFIGS.api;
+
+    // Rate limit 체크
+    const result = await checkRateLimit(identifier, config);
+
+    // 응답에 Rate limit 헤더 추가 (metadata에 저장)
+    context.metadata.rateLimit = {
+      limit: config.limit,
+      remaining: result.remaining,
+      reset: result.resetIn,
+    };
+
+    // Rate limit 초과 시 에러
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 42901,
+            message: 'Rate limit exceeded',
+            metadata: {
+              resetIn: result.resetIn,
+              identifier,
+              type,
+            },
+          },
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': String(config.limit),
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(result.resetIn),
+            'Retry-After': String(result.resetIn),
+          },
+        }
+      );
+    }
+
+    return await next();
+  };
+}
+
+/**
+ * 사전 정의된 Rate Limit 미들웨어
+ */
+export const rateLimitMiddleware = {
+  /** API Rate Limit (분당 120회) */
+  api: createRateLimitMiddleware('api'),
+
+  /** 인증 Rate Limit (시간당 40회) */
+  auth: createRateLimitMiddleware('auth'),
+
+  /** 관리자 Rate Limit (분당 200회) */
+  admin: createRateLimitMiddleware('admin'),
+};

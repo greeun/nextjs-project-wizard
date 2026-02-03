@@ -1,0 +1,105 @@
+/**
+ * CORS 미들웨어
+ *
+ * Cross-Origin Resource Sharing 헤더를 설정합니다.
+ */
+
+import { NextResponse } from 'next/server';
+import type { TApiMiddleware } from './types';
+
+// 환경별 허용 Origin 설정
+const getAllowedOrigins = (): string[] => {
+  const nodeEnv = process.env.NODE_ENV;
+
+  // 프로덕션
+  if (nodeEnv === 'production') {
+    return [
+      process.env.NEXT_PUBLIC_APP_URL || 'https://example.com',
+      'https://www.example.com',
+    ].filter(Boolean);
+  }
+
+  // 개발/테스트 환경
+  return [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    process.env.NEXT_PUBLIC_APP_URL,
+  ].filter(Boolean) as string[];
+};
+
+/**
+ * CORS 미들웨어
+ *
+ * - Origin 검증 및 CORS 헤더 설정
+ * - OPTIONS preflight 요청 처리
+ * - 크레덴셜 허용 설정
+ */
+export const corsMiddleware: TApiMiddleware = async (context, next) => {
+  const { request } = context;
+  const origin = request.headers.get('origin');
+  const allowedOrigins = getAllowedOrigins();
+
+  // OPTIONS preflight 요청 처리
+  if (request.method === 'OPTIONS') {
+    const response = new NextResponse(null, { status: 204 });
+
+    // Origin 검증
+    if (origin && allowedOrigins.includes(origin)) {
+      response.headers.set('Access-Control-Allow-Origin', origin);
+    } else if (allowedOrigins.includes('*')) {
+      response.headers.set('Access-Control-Allow-Origin', '*');
+    }
+
+    // CORS 설정
+    response.headers.set(
+      'Access-Control-Allow-Methods',
+      'GET, POST, PUT, DELETE, PATCH, OPTIONS'
+    );
+    response.headers.set(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Requested-With, X-API-Key'
+    );
+    response.headers.set('Access-Control-Max-Age', '86400'); // 24시간
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+
+    return response;
+  }
+
+  // 일반 요청 처리
+  const response = await next();
+
+  // Origin 검증
+  if (origin && allowedOrigins.includes(origin)) {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  } else if (allowedOrigins.includes('*') || process.env.NODE_ENV === 'test') {
+    // 테스트 환경에서는 모든 Origin 허용
+    response.headers.set('Access-Control-Allow-Origin', origin || '*');
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  }
+
+  // 공통 CORS 헤더
+  response.headers.set(
+    'Access-Control-Allow-Methods',
+    'GET, POST, PUT, DELETE, PATCH, OPTIONS'
+  );
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With, X-API-Key'
+  );
+
+  return response;
+};
+
+/**
+ * CORS 설정 검증 및 초기화
+ */
+export function validateCorsConfiguration(): void {
+  const allowedOrigins = getAllowedOrigins();
+  const nodeEnv = process.env.NODE_ENV;
+
+  console.log(
+    `[CORS Middleware] Initialized - Environment: ${nodeEnv}, Allowed Origins: [${allowedOrigins.join(', ')}]`
+  );
+}

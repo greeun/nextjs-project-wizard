@@ -1,0 +1,78 @@
+/**
+ * 응답 로거 미들웨어
+ *
+ * - 요청/응답 정보 로깅
+ * - 응답 시간 측정
+ * - Rate limit 헤더 추가
+ */
+
+import type { TApiMiddleware } from './types';
+
+/**
+ * 응답 로거 미들웨어
+ *
+ * 요청 처리 시작부터 끝까지의 정보를 로깅합니다.
+ *
+ * @example
+ * ```typescript
+ * const chain = new MiddlewareChain()
+ *   .use(errorHandlerMiddleware)
+ *   .use(initRequestMiddleware)
+ *   .use(responseLoggerMiddleware);
+ * ```
+ */
+export const responseLoggerMiddleware: TApiMiddleware = async (context, next) => {
+  const startTime = context.startTime || Date.now();
+
+  try {
+    // 다음 미들웨어/핸들러 실행
+    const response = await next();
+
+    // 응답 시간 계산
+    const duration = Date.now() - startTime;
+
+    // 로깅
+    const path = new URL(context.request.url).pathname;
+    const rl = context.metadata.rateLimit as any;
+    const rlInfo = rl ? ` rl:${rl.remaining}/${rl.limit}` : '';
+    const userInfo = context.user ? ` u:${context.user.id.slice(0, 8)}` : '';
+
+    console.log(
+      `API ${response.status} ${context.request.method} ${path} (${duration}ms)${userInfo}${rlInfo}`
+    );
+
+    // Rate limit 헤더 추가 (있는 경우)
+    if (context.metadata.rateLimit) {
+      const { limit, remaining, reset } = context.metadata.rateLimit as any;
+      response.headers.set('X-RateLimit-Limit', String(limit));
+      response.headers.set('X-RateLimit-Remaining', String(remaining));
+      response.headers.set('X-RateLimit-Reset', String(reset));
+    }
+
+    // Request ID 헤더 추가
+    response.headers.set('X-Request-ID', context.requestId);
+
+    return response;
+  } catch (error) {
+    // 에러 발생 시에도 로깅
+    const duration = Date.now() - startTime;
+
+    console.error('API Error', {
+      requestId: context.requestId,
+      method: context.request.method,
+      path: new URL(context.request.url).pathname,
+      duration: `${duration}ms`,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      locale: context.locale,
+      user: context.user
+        ? {
+            id: context.user.id,
+            role: context.user.role,
+          }
+        : undefined,
+    });
+
+    // 에러를 다시 던져서 errorHandlerMiddleware에서 처리되도록 함
+    throw error;
+  }
+};

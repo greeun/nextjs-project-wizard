@@ -1,0 +1,30 @@
+#!/bin/sh
+# Production build script
+
+cd "$(dirname "$0")/.." || exit
+
+# 환경 변수 파일 결정
+ENV_FILE="${BUILD_ENV_FILE:-.env.production}"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "⚠️ Warning: $ENV_FILE not found. Using defaults."
+fi
+
+echo "🔨 Building with $ENV_FILE..."
+
+# NODE_ENV는 Next.js가 빌드 시 자동으로 production으로 설정
+# Prisma 클라이언트 생성
+if [ -f "prisma/schema.prisma" ]; then
+  echo "📦 Generating Prisma client..."
+  npx prisma generate
+fi
+
+# Next.js 빌드
+echo "🏗️ Building Next.js..."
+if [ -f "$ENV_FILE" ]; then
+  dotenv -e "$ENV_FILE" -o -- next build
+else
+  next build
+fi
+
+echo "✅ Build complete!"
