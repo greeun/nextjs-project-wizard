@@ -1,0 +1,75 @@
+/**
+ * API 미들웨어 타입 정의
+ */
+
+import type { NextRequest, NextResponse } from 'next/server';
+
+/**
+ * 지원 로케일
+ */
+export type TLocale = 'ko' | 'en' | 'ja';
+
+/**
+ * 사용자 정보 (JWT 토큰에서 추출)
+ */
+export interface IUser {
+  id: string;
+  email: string;
+  name?: string;
+  role: 'USER' | 'ADMIN';
+}
+
+/**
+ * API 컨텍스트
+ * - 요청 전반에 걸쳐 공유되는 정보
+ */
+export interface IApiContext {
+  // 요청 정보
+  request: NextRequest;
+
+  // 사용자 정보 (인증 후 설정)
+  user?: IUser;
+
+  // 로케일 (클라이언트 언어)
+  locale: TLocale;
+
+  // 요청 ID (추적용)
+  requestId: string;
+
+  // 시작 시간 (성능 측정용)
+  startTime: number;
+
+  // 메타데이터 (확장 가능)
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * API 핸들러 함수
+ * - 실제 비즈니스 로직을 처리하는 함수
+ * - props는 Next.js dynamic route params를 지원
+ */
+export type TApiHandler = (
+  context: IApiContext,
+  props?: any
+) => Promise<NextResponse> | NextResponse;
+
+/**
+ * API 미들웨어 함수
+ * - 체인에서 실행되는 미들웨어
+ * - next()를 호출하여 다음 미들웨어로 전달
+ */
+export type TApiMiddleware = (
+  context: IApiContext,
+  next: () => Promise<NextResponse>
+) => Promise<NextResponse>;
+
+/**
+ * 미들웨어 체인 옵션
+ */
+export interface IMiddlewareChainOptions {
+  // 에러 발생 시 계속 진행할지 여부
+  continueOnError?: boolean;
+
+  // 타임아웃 (밀리초)
+  timeout?: number;
+}

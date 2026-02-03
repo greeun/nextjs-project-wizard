@@ -1,0 +1,19 @@
+#!/bin/sh
+# Development server startup script (공유 개발 환경)
+
+cd "$(dirname "$0")/.." || exit
+
+# 환경 변수 파일 확인
+ENV_FILE=".env.dev"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "❌ Error: $ENV_FILE not found."
+  echo "   Please create $ENV_FILE file."
+  echo "   You can copy from .env.example as a template."
+  exit 1
+fi
+
+# NODE_ENV 설정
+export NODE_ENV=development
+
+# Prisma 생성 및 개발 서버 시작
+dotenv -e "$ENV_FILE" -o -- npx prisma generate && dotenv -e "$ENV_FILE" -o -- next dev --turbopack

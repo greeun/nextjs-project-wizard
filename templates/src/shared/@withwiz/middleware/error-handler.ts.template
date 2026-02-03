@@ -1,0 +1,207 @@
+/**
+ * 에러 핸들러 미들웨어
+ *
+ * - 모든 에러를 잡아서 표준 형식의 JSON 응답으로 변환
+ * - AppError를 감지하여 적절한 HTTP 상태 코드 반환
+ * - ZodError를 감지하여 400 Bad Request 반환
+ */
+
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import type { TApiMiddleware, TLocale } from './types';
+
+/**
+ * 커스텀 에러 클래스
+ */
+export class AppError extends Error {
+  constructor(
+    public code: number,
+    message?: string,
+    public details?: Record<string, unknown>
+  ) {
+    super(message || `Error [${code}]`);
+    this.name = 'AppError';
+  }
+}
+
+/**
+ * 다국어 에러 메시지 가져오기
+ */
+function getErrorMessage(
+  code: number,
+  locale: TLocale
+): { title: string; description: string; action?: string } {
+  // 기본 에러 메시지 (프로젝트에서 확장 가능)
+  const messages: Record<
+    number,
+    Record<TLocale, { title: string; description: string; action?: string }>
+  > = {
+    40101: {
+      ko: {
+        title: '인증 필요',
+        description: '로그인이 필요한 서비스입니다.',
+        action: '로그인해 주세요.',
+      },
+      en: {
+        title: 'Authentication Required',
+        description: 'Please log in to continue.',
+        action: 'Please sign in.',
+      },
+      ja: {
+        title: '認証が必要',
+        description: 'ログインが必要です。',
+        action: 'ログインしてください。',
+      },
+    },
+    40301: {
+      ko: {
+        title: '권한 없음',
+        description: '이 작업을 수행할 권한이 없습니다.',
+      },
+      en: {
+        title: 'Forbidden',
+        description: 'You do not have permission to perform this action.',
+      },
+      ja: {
+        title: '権限なし',
+        description: 'この操作を行う権限がありません。',
+      },
+    },
+    40001: {
+      ko: { title: '잘못된 요청', description: '입력값을 확인해 주세요.' },
+      en: { title: 'Bad Request', description: 'Please check your input.' },
+      ja: { title: '不正なリクエスト', description: '入力内容を確認してください。' },
+    },
+    42901: {
+      ko: {
+        title: '요청 한도 초과',
+        description: '잠시 후 다시 시도해 주세요.',
+      },
+      en: {
+        title: 'Rate Limit Exceeded',
+        description: 'Please try again later.',
+      },
+      ja: { title: 'リクエスト制限超過', description: '後でもう一度お試しください。' },
+    },
+    50001: {
+      ko: { title: '서버 오류', description: '잠시 후 다시 시도해 주세요.' },
+      en: {
+        title: 'Internal Server Error',
+        description: 'Please try again later.',
+      },
+      ja: { title: 'サーバーエラー', description: '後でもう一度お試しください。' },
+    },
+  };
+
+  const msg = messages[code]?.[locale] || messages[50001]?.[locale];
+  return (
+    msg || { title: 'Error', description: 'An unexpected error occurred.' }
+  );
+}
+
+/**
+ * 에러 핸들러 미들웨어
+ *
+ * 체인의 최상위에 배치하여 모든 에러를 캐치합니다.
+ *
+ * @example
+ * ```typescript
+ * const chain = new MiddlewareChain()
+ *   .use(errorHandlerMiddleware)  // 가장 먼저
+ *   .use(initRequestMiddleware)
+ *   .use(authMiddleware);
+ * ```
+ */
+export const errorHandlerMiddleware: TApiMiddleware = async (context, next) => {
+  try {
+    // 다음 미들웨어/핸들러 실행
+    return await next();
+  } catch (error) {
+    // AppError인 경우
+    if (error instanceof AppError) {
+      return createErrorResponse(
+        error.code,
+        error.message,
+        context.locale,
+        context.requestId,
+        error.details
+      );
+    }
+
+    // ZodError인 경우 (validation failure -> 400)
+    if (error instanceof z.ZodError) {
+      const issues = error.errors.map((e) => ({
+        path: e.path.join('.'),
+        message: e.message,
+        code: e.code,
+      }));
+      const firstMessage = issues[0]?.message || 'Validation failed';
+
+      return createErrorResponse(40001, firstMessage, context.locale, context.requestId, {
+        issues,
+      });
+    }
+
+    // 알 수 없는 에러 (500)
+    console.error('[ErrorHandler] Unexpected error:', error);
+
+    // 프로덕션 환경에서는 민감한 정보 숨김
+    const isProduction = process.env.NODE_ENV === 'production';
+    const safeMessage = isProduction
+      ? 'Internal server error'
+      : error instanceof Error
+        ? error.message
+        : 'Unknown error';
+
+    return createErrorResponse(
+      50001,
+      safeMessage,
+      context.locale,
+      context.requestId,
+      // 개발 환경에서만 스택 트레이스 포함
+      !isProduction && error instanceof Error
+        ? { stack: error.stack?.split('\n').slice(0, 5) }
+        : undefined
+    );
+  }
+};
+
+/**
+ * 에러 응답 생성
+ */
+function createErrorResponse(
+  code: number,
+  message: string,
+  locale: TLocale,
+  requestId: string,
+  metadata?: Record<string, unknown>
+): NextResponse {
+  // 사용자용 다중 언어 메시지
+  const userMessage = getErrorMessage(code, locale);
+
+  // HTTP 상태 코드 추출 (40907 -> 409)
+  const httpStatus = Math.floor(code / 100);
+
+  // 에러 응답 구조
+  const errorResponse = {
+    success: false,
+    error: {
+      code,
+      message: `${message} [${code}]`,
+      userMessage: {
+        title: userMessage.title,
+        description: userMessage.description,
+        action: userMessage.action,
+      },
+      requestId,
+      ...(metadata && { metadata }),
+    },
+  };
+
+  return NextResponse.json(errorResponse, {
+    status: httpStatus,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+}

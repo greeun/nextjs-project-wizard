@@ -1,0 +1,167 @@
+/**
+ * API 래퍼 함수
+ *
+ * 미들웨어 체인을 조합하여 API 핸들러를 래핑합니다.
+ */
+
+import type { NextRequest } from 'next/server';
+import type { IApiContext, TApiHandler } from './types';
+import { MiddlewareChain } from './middleware-chain';
+import { errorHandlerMiddleware } from './error-handler';
+import { initRequestMiddleware } from './init-request';
+import { authMiddleware, adminMiddleware } from './auth';
+import { rateLimitMiddleware } from './rate-limit';
+import { responseLoggerMiddleware } from './response-logger';
+import { corsMiddleware } from './cors';
+import { securityMiddleware } from './security';
+
+/**
+ * 공개 API 래퍼
+ *
+ * - 인증 불필요
+ * - Rate limit: API (분당 120회)
+ * - 에러 핸들링, 로깅 포함
+ *
+ * @example
+ * ```typescript
+ * export const GET = withPublicApi(async (ctx) => {
+ *   return NextResponse.json({ message: 'Hello' });
+ * });
+ * ```
+ */
+export function withPublicApi(handler: TApiHandler) {
+  const chain = new MiddlewareChain()
+    .use(errorHandlerMiddleware) // 최상위 에러 핸들러
+    .use(securityMiddleware) // 보안 검증
+    .use(corsMiddleware) // CORS 헤더
+    .use(initRequestMiddleware) // 요청 초기화
+    .use(rateLimitMiddleware.api) // Rate limit
+    .use(responseLoggerMiddleware); // 응답 로깅
+
+  return async (request: NextRequest, props?: unknown) => {
+    const context: IApiContext = {
+      request,
+      locale: 'ko',
+      requestId: '',
+      startTime: Date.now(),
+      metadata: {},
+    };
+
+    return await chain.execute(context, handler, props);
+  };
+}
+
+/**
+ * 인증 필수 API 래퍼
+ *
+ * - JWT 인증 필수
+ * - Rate limit: API (분당 120회)
+ * - 에러 핸들링, 로깅 포함
+ *
+ * @example
+ * ```typescript
+ * export const GET = withAuthApi(async (ctx) => {
+ *   const userId = ctx.user!.id;
+ *   return NextResponse.json({ userId });
+ * });
+ * ```
+ */
+export function withAuthApi(handler: TApiHandler) {
+  const chain = new MiddlewareChain()
+    .use(errorHandlerMiddleware)
+    .use(securityMiddleware)
+    .use(corsMiddleware)
+    .use(initRequestMiddleware)
+    .use(authMiddleware) // JWT 인증
+    .use(rateLimitMiddleware.api)
+    .use(responseLoggerMiddleware);
+
+  return async (request: NextRequest, props?: unknown) => {
+    const context: IApiContext = {
+      request,
+      locale: 'ko',
+      requestId: '',
+      startTime: Date.now(),
+      metadata: {},
+    };
+
+    return await chain.execute(context, handler, props);
+  };
+}
+
+/**
+ * 관리자 전용 API 래퍼
+ *
+ * - JWT 인증 + 관리자 권한 필수
+ * - Rate limit: Admin (분당 200회)
+ * - 에러 핸들링, 로깅 포함
+ *
+ * @example
+ * ```typescript
+ * export const GET = withAdminApi(async (ctx) => {
+ *   // ctx.user.role === 'ADMIN' 보장됨
+ *   return NextResponse.json({ users: [...] });
+ * });
+ * ```
+ */
+export function withAdminApi(handler: TApiHandler) {
+  const chain = new MiddlewareChain()
+    .use(errorHandlerMiddleware)
+    .use(securityMiddleware)
+    .use(corsMiddleware)
+    .use(initRequestMiddleware)
+    .use(authMiddleware)
+    .use(adminMiddleware) // 관리자 권한 확인
+    .use(rateLimitMiddleware.admin)
+    .use(responseLoggerMiddleware);
+
+  return async (request: NextRequest, props?: unknown) => {
+    const context: IApiContext = {
+      request,
+      locale: 'ko',
+      requestId: '',
+      startTime: Date.now(),
+      metadata: {},
+    };
+
+    return await chain.execute(context, handler, props);
+  };
+}
+
+/**
+ * 커스텀 미들웨어 체인 API 래퍼
+ *
+ * 사용자 정의 미들웨어 체인을 적용할 수 있습니다.
+ *
+ * @example
+ * ```typescript
+ * export const GET = withCustomApi(
+ *   async (ctx) => {
+ *     return NextResponse.json({ data: 'custom' });
+ *   },
+ *   (chain) => chain
+ *     .use(errorHandlerMiddleware)
+ *     .use(initRequestMiddleware)
+ *     .use(createRateLimitMiddleware('custom'))
+ *     .use(responseLoggerMiddleware)
+ * );
+ * ```
+ */
+export function withCustomApi(
+  handler: TApiHandler,
+  configureChain: (chain: MiddlewareChain) => MiddlewareChain
+) {
+  const chain = configureChain(new MiddlewareChain());
+
+  return async (request: NextRequest, props?: unknown) => {
+    const context: IApiContext = {
+      request,
+      locale: 'ko',
+      requestId: '',
+      startTime: Date.now(),
+      metadata: {},
+    };
+
+    return await chain.execute(context, handler, props);
+  };
+}

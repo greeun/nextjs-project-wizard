@@ -1,0 +1,176 @@
+/**
+ * 보안 미들웨어
+ *
+ * - TRACE/TRACK HTTP 메서드 차단
+ * - Content-Type 검증
+ * - 보안 헤더 강화
+ */
+
+import { NextResponse } from 'next/server';
+import type { TApiMiddleware } from './types';
+
+/**
+ * 차단할 HTTP 메서드 목록
+ * TRACE/TRACK은 XST(Cross-Site Tracing) 공격에 사용될 수 있음
+ */
+const BLOCKED_METHODS = ['TRACE', 'TRACK'] as const;
+
+/**
+ * 허용되는 Content-Type 목록
+ * API 요청에 허용되는 Content-Type만 지정
+ */
+const ALLOWED_CONTENT_TYPES = [
+  'application/json',
+  'application/x-www-form-urlencoded',
+  'multipart/form-data',
+  'text/plain',
+] as const;
+
+/**
+ * Content-Type 검증이 필요한 HTTP 메서드
+ * GET, HEAD, OPTIONS는 body가 없으므로 제외
+ */
+const METHODS_REQUIRING_CONTENT_TYPE = ['POST', 'PUT', 'PATCH'] as const;
+
+/**
+ * 보안 미들웨어
+ *
+ * - TRACE/TRACK 메서드 차단 (405 Method Not Allowed)
+ * - POST/PUT/PATCH 요청의 Content-Type 검증
+ * - 보안 헤더 추가
+ *
+ * @example
+ * ```typescript
+ * const chain = new MiddlewareChain()
+ *   .use(errorHandlerMiddleware)
+ *   .use(securityMiddleware)  // CORS 전에 배치
+ *   .use(corsMiddleware)
+ *   .use(initRequestMiddleware);
+ * ```
+ */
+export const securityMiddleware: TApiMiddleware = async (context, next) => {
+  const { request } = context;
+  const method = request.method.toUpperCase();
+
+  // 1. TRACE/TRACK 메서드 차단
+  if (BLOCKED_METHODS.includes(method as (typeof BLOCKED_METHODS)[number])) {
+    return new NextResponse(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: 40500,
+          message: `Method ${method} is not allowed`,
+          userMessage: {
+            title: '허용되지 않는 메서드',
+            description: `${method} 메서드는 보안상 이유로 허용되지 않습니다.`,
+            action: '다른 HTTP 메서드를 사용해 주세요.',
+          },
+        },
+      }),
+      {
+        status: 405,
+        headers: {
+          'Content-Type': 'application/json',
+          Allow: 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+        },
+      }
+    );
+  }
+
+  // 2. Content-Type 검증 (POST, PUT, PATCH 요청만)
+  if (
+    METHODS_REQUIRING_CONTENT_TYPE.includes(
+      method as (typeof METHODS_REQUIRING_CONTENT_TYPE)[number]
+    )
+  ) {
+    const contentType = request.headers.get('content-type');
+
+    // Content-Type 헤더가 없는 경우
+    if (!contentType) {
+      const contentLength = request.headers.get('content-length');
+      if (contentLength && parseInt(contentLength, 10) > 0) {
+        return new NextResponse(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: 41500,
+              message: 'Content-Type header is required for requests with body',
+            },
+          }),
+          {
+            status: 415,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: ALLOWED_CONTENT_TYPES.join(', '),
+            },
+          }
+        );
+      }
+    }
+
+    // Content-Type이 허용 목록에 없는 경우
+    if (contentType) {
+      const normalizedContentType = contentType.split(';')[0].trim().toLowerCase();
+      const isAllowed = ALLOWED_CONTENT_TYPES.some(
+        (allowed) =>
+          normalizedContentType === allowed ||
+          normalizedContentType.startsWith(allowed)
+      );
+
+      if (!isAllowed) {
+        return new NextResponse(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: 41501,
+              message: `Unsupported Content-Type: ${normalizedContentType}`,
+            },
+          }),
+          {
+            status: 415,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: ALLOWED_CONTENT_TYPES.join(', '),
+            },
+          }
+        );
+      }
+    }
+  }
+
+  // 3. 다음 미들웨어 실행
+  const response = await next();
+
+  // 4. 추가 보안 헤더 설정
+  if (!response.headers.has('X-Content-Type-Options')) {
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+  }
+  if (!response.headers.has('X-Frame-Options')) {
+    response.headers.set('X-Frame-Options', 'DENY');
+  }
+  if (!response.headers.has('X-XSS-Protection')) {
+    response.headers.set('X-XSS-Protection', '1; mode=block');
+  }
+  if (!response.headers.has('Referrer-Policy')) {
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  }
+  if (!response.headers.has('Permissions-Policy')) {
+    response.headers.set(
+      'Permissions-Policy',
+      'geolocation=(), microphone=(), camera=()'
+    );
+  }
+
+  return response;
+};
+
+/**
+ * 보안 미들웨어 설정 검증
+ */
+export function validateSecurityConfiguration(): void {
+  console.log('[Security Middleware] Blocked methods:', BLOCKED_METHODS.join(', '));
+  console.log(
+    '[Security Middleware] Allowed Content-Types:',
+    ALLOWED_CONTENT_TYPES.join(', ')
+  );
+}

@@ -1,0 +1,82 @@
+# CLAUDE.md
+
+## Basic Requirements
+
+**Language Preference**: 모든 대화와 문서는 한국어로 작성
+
+**Local Environment**: `npm run local` 명령으로 로컬 서버 실행 (.env.local 사용)
+
+## Project Overview
+
+{{PROJECT_DESCRIPTION}}
+
+**Version**: 0.1.0 | **Node**: >=20.0.0 | **npm**: >=10.0.0
+
+## Essential Commands
+
+```bash
+# Development
+npm run local          # 로컬 서버 (.env.local)
+npm run dev            # 개발 서버
+npm run build          # 프로덕션 빌드
+npm run start          # 빌드된 서버 실행
+
+# Testing
+npm run test           # Jest 테스트
+npm run test:e2e       # Playwright E2E 테스트
+
+# Database (if using Prisma)
+npm run prisma:generate  # Prisma 클라이언트 생성
+npm run prisma:migrate:dev  # 마이그레이션 적용
+npm run prisma:studio    # Prisma Studio GUI
+```
+
+## Architecture
+
+```
+src/
+├── app/              # Next.js 15 App Router
+│   ├── api/         # API Routes
+│   └── [locale]/    # i18n 라우팅 (선택)
+├── components/       # React 컴포넌트
+│   ├── ui/          # shadcn/ui 컴포넌트
+│   ├── layouts/     # 레이아웃 컴포넌트
+│   └── commons/     # 공통 컴포넌트
+├── lib/             # 비즈니스 로직
+│   ├── services/    # 서비스 레이어
+│   ├── validators/  # Zod 검증 스키마
+│   ├── hooks/       # 커스텀 React hooks
+│   ├── constants/   # 프로젝트 상수
+│   └── utils/       # 유틸리티 함수
+├── shared/          # 재사용 가능 코드
+│   └── @withwiz/    # 프로젝트 독립적 패키지
+│       ├── constants/
+│       ├── utils/
+│       └── validators/
+└── types/           # TypeScript 타입 정의
+```
+
+## Dependency Rules
+
+**일방향 의존만 허용**:
+- `src/lib/` → `src/shared/@withwiz/` (허용)
+- `src/shared/@withwiz/` → `src/lib/` (금지)
+
+`src/shared/@withwiz/`는 프로젝트 독립적이어야 하며, 다른 프로젝트에서 재사용 가능해야 합니다.
+
+## Environment Variables
+
+| 변수 | 설명 | 필수 |
+|------|------|------|
+| `NEXT_PUBLIC_BASE_URL` | 클라이언트 베이스 URL | Yes |
+| `BASE_URL` | 서버 베이스 URL | Yes |
+| `DATABASE_URL` | PostgreSQL 연결 문자열 | DB 사용 시 |
+| `JWT_SECRET` | JWT 서명 키 | 인증 사용 시 |
+
+## Troubleshooting
+
+| 문제 | 해결 |
+|------|------|
+| 빌드 실패 | `rm -rf .next && npm run build` |
+| 타입 에러 | `npm run prisma:generate` |
+| 포트 충돌 | `PORT=3001 npm run dev` |

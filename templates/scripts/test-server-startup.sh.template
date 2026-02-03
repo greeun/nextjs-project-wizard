@@ -1,0 +1,23 @@
+#!/bin/sh
+# Test server startup script (E2E 테스트용)
+
+cd "$(dirname "$0")/.." || exit
+
+# 환경 변수 파일 확인
+ENV_FILE=".env.test"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "❌ Error: $ENV_FILE not found."
+  echo "   Please create $ENV_FILE file for testing."
+  exit 1
+fi
+
+# NODE_ENV 설정
+export NODE_ENV=test
+
+# 테스트 포트 (기본 3555)
+export PORT=${TEST_PORT:-3555}
+
+echo "🧪 Starting test server on port $PORT..."
+
+# Prisma 생성 및 테스트 서버 시작
+dotenv -e "$ENV_FILE" -o -- npx prisma generate && dotenv -e "$ENV_FILE" -o -- next dev --turbopack -p $PORT
