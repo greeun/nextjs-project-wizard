@@ -1,6 +1,6 @@
 ---
 name: nextjs-project-wizard
-description: Use when user wants to create a new Next.js 15 project with similar structure to url-shortener-mvp. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
+description: Use when user wants to create a new Next.js 15 project with Clean Architecture structure. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
 ---
 
 # Next.js 15 Project Wizard
