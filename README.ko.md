@@ -17,13 +17,20 @@
 
 ## 설치
 
-Claude Code 가 인식하려면 `~/.claude/skills/` 에 심링크를 생성해야 한다:
+스킬은 `axt`(Agent eXtension Tool)로 관리한다. 이 저장소가 곧 extension vault 다 —
+`~/.axt/vault/skills` 가 이 저장소를 가리키므로 이 스킬은 이미 vault 항목으로 등록돼 있다.
+**전역 `~/.claude/skills/` 링크는 생성하지 않는다.**
+
+위저드를 실행할 프로젝트에 붙인다:
 
 ```bash
-ln -s "$(pwd)/nextjs-project-wizard" ~/.claude/skills/nextjs-project-wizard
+axt project init                              # .axt-profile.json 이 없을 때만
+axt project add skills nextjs-project-wizard  # .axt-profile.json 에 기록
+axt project sync                              # 프로필과 심링크 상태 동기화
 ```
 
-확인: `ls -la ~/.claude/skills/ | grep nextjs`
+확인: `axt skill list | grep nextjs-project-wizard`.
+프로필과 실제 심링크의 차이는 `axt project status` 로 본다.
 
 ## 사용법
 

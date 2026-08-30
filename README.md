@@ -18,13 +18,20 @@ in the template repo, so the boilerplate can evolve without touching this skill.
 
 ## Install
 
-The skill has to be linked into `~/.claude/skills/` before Claude Code can activate it:
+Skills are managed with `axt` (Agent eXtension Tool). This repository *is* the extension vault —
+`~/.axt/vault/skills` points at it — so the skill is already available as a vault entry.
+**Do not create a global `~/.claude/skills/` link.**
+
+Attach it to whichever project you want to run the wizard from:
 
 ```bash
-ln -s "$(pwd)/nextjs-project-wizard" ~/.claude/skills/nextjs-project-wizard
+axt project init                              # only if .axt-profile.json does not exist yet
+axt project add skills nextjs-project-wizard  # record it in .axt-profile.json
+axt project sync                              # reconcile the symlinks with the profile
 ```
 
-Verify with `ls -la ~/.claude/skills/ | grep nextjs`.
+Verify with `axt skill list | grep nextjs-project-wizard`, or `axt project status` to compare the
+profile against the links actually on disk.
 
 ## Usage
 
