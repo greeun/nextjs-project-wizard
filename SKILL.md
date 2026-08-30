@@ -1,14 +1,15 @@
 ---
 name: nextjs-project-wizard
 description: Use when user wants to create a new Next.js 16 project with withwiz integration. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
-version: 1.1.0
+version: 1.1.1
 ---
 
 # Next.js 16 Project Wizard
 
 GitHub Template Repository **`greeun/nextjs-16-project-template`** 를 base 로 새 Next.js 16 프로젝트를
 빠르게 시작하는 인터랙티브 위저드. 파일을 일일이 생성하지 않고, 검증된 보일러플레이트를
-degit 으로 가져와 `init-from-template.sh` 로 프로젝트별 값(이름·포트·DB)을 치환한다.
+가져와(`gh repo clone --depth=1` + `.git` 제거) `init-from-template.sh` 로 프로젝트별 값
+(이름·포트·DB)을 치환하고 템플릿 흔적을 지운다.
 
 > 이전 버전은 프로젝트 파일을 직접 스캐폴딩했다. 현재는 **template repo 방식**이다 —
 > 보일러플레이트 자체가 CI 검증(빌드/타입/lint/test)된 상태로 유지되므로 더 안정적이고 빠르다.
@@ -44,9 +45,9 @@ withwiz 패키지는 **npm 게시 버전**(`^0.9.0`/`^0.1.0`/`^0.5.0`)을 쓴다
 ```
 Phase 1: 정보 수집 (이름·경로·포트블록·도메인)
     ↓
-Phase 2: 템플릿 가져오기 (degit greeun/nextjs-16-project-template)
+Phase 2: 템플릿 가져오기 (gh repo clone --depth=1 + .git 제거)
     ↓
-Phase 3: 프로젝트별 값 치환 (init-from-template.sh)
+Phase 3: 치환 + 템플릿 흔적 제거 (init-from-template.sh)
     ↓
 Phase 4: PORTS.md 등록 + 의존성/DB 셋업
     ↓

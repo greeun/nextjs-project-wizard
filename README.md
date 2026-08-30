@@ -1,344 +1,177 @@
-# Next.js 15 Project Wizard
+# Next.js 16 Project Wizard
 
-> Claude Code 스킬: url-shortener-mvp 프로젝트 구조를 기반으로 새 Next.js 15 프로젝트를 생성하는 인터랙티브 위저드
+> A Claude Code skill that starts a new Next.js 16 project from the
+> **`greeun/nextjs-16-project-template`** GitHub Template Repository.
 
-## 개요
+[한국어 README](./README.ko.md)
 
-이 스킬은 프로덕션 레벨의 Next.js 15 프로젝트를 빠르게 스캐폴딩합니다. Clean Architecture, 미들웨어 체인, 환경별 설정 등 실무에서 검증된 구조를 제공합니다.
+## What it does
 
-### 주요 특징
+The skill does **not** scaffold files one by one. It pulls a boilerplate that is already
+integrated and CI-verified (build / typecheck / lint / test), then runs the template's own
+`init-from-template.sh` to substitute the per-project values (name, port block, database name)
+and to erase every trace of the template.
 
-- **Next.js 15 + React 19** - 최신 App Router 기반
-- **TypeScript** - 완전한 타입 지원
-- **Tailwind CSS 4** - 최신 CSS 프레임워크
-- **Clean Architecture** - `src/lib/` (비즈니스) + `src/shared/@withwiz/` (공용)
-- **미들웨어 시스템** - Express 스타일 API 미들웨어 체인
-- **환경별 설정** - local, dev, production, test 환경 분리
+The skill itself carries no boilerplate. It owns the procedure — what to ask, in what order to
+run things, how to reserve ports, and what to verify. The stack and the substitution logic live
+in the template repo, so the boilerplate can evolve without touching this skill.
 
-## 사용 방법
+## Install
 
-### Claude Code에서 호출
+The skill has to be linked into `~/.claude/skills/` before Claude Code can activate it:
+
+```bash
+ln -s "$(pwd)/nextjs-project-wizard" ~/.claude/skills/nextjs-project-wizard
+```
+
+Verify with `ls -la ~/.claude/skills/ | grep nextjs`.
+
+## Usage
+
+Ask Claude Code in plain language:
 
 ```
 새 프로젝트 생성해줘
 ```
 
-또는
+**Trigger keywords** — `새 프로젝트`, `프로젝트 생성`, `프로젝트 세팅`,
+`create project`, `scaffold project`, `init project`, `boilerplate setup`.
+
+## What the template ships (fixed stack)
+
+No stack picking — everything below is already wired up and verified in the template repo.
+
+| Area | Contents |
+|---|---|
+| Stack | Next.js 16 · React 19 · TypeScript 5 · Prisma 7 · PostgreSQL 16 · Node 22 · pnpm |
+| Auth | Full `@withwiz/toolkit` — sign in / sign up / sign out / refresh / me / password reset / email verification / magic link |
+| OAuth | 5 providers on the backend (google · github · kakao · microsoft · meta), 3 UI buttons; only providers with an id + secret in env are enabled |
+| Auth UI | `@withwiz/auth-ui` screens (sign in, sign up, reset, verify) — kept light even in dark mode |
+| i18n | ko / en / ja · `[locale]` routing · automatic negotiation in the proxy |
+| UI / theme | `@withwiz/ui` · Tailwind 4 · lightweight theme (light / dark / system, light by default, no flash) |
+| Middleware | proxy (locale + auth gate) · API chain (`withPublicApi` / `withAuthApi`, rate limit) |
+| Email | nodemailer SMTP via the toolkit's `SmtpEmailSender`; falls back to console when unconfigured |
+| Infra | Docker (compose `postgres:16` + standalone Dockerfile) · Vitest + Playwright · 4 `.env` profiles |
+
+withwiz packages resolve to their **published npm versions** (`^0.9.0` / `^0.1.0` / `^0.5.0`) — not `file:` deps.
+
+## Workflow
 
 ```
-/nextjs-project-wizard
+Phase 1: Collect info (name · path · port block · domain)
+    ↓
+Phase 2: Fetch the template (gh repo clone --depth=1, then remove .git)
+    ↓
+Phase 3: Substitute values + erase template traces (init-from-template.sh)
+    ↓
+Phase 4: Register the port block in PORTS.md, install deps, set up the DB
+    ↓
+Phase 5: Verify and start the server
 ```
 
-### 트리거 키워드
+**Phase 1** asks for the project name (kebab-case), the target path, and a 3-digit port block.
+The block is proposed from the workspace's `PORTS.md` — the wizard reads the next free block
+first. Without a `PORTS.md` it must ask, and it never falls back to the default framework
+ports (3000 / 5432).
 
-- "새 프로젝트", "프로젝트 생성", "프로젝트 세팅"
-- "create project", "scaffold project", "init project"
-- "boilerplate setup"
+**Phase 2** takes files only. The template repo is private, so `gh repo clone` is the primary
+path; `degit` cannot authenticate against a private repo and is only usable if the repo is made
+public. If the repo cannot be reached, the wizard stops and asks rather than hand-scaffolding
+files, which would break stack consistency.
 
-## 위저드 워크플로우
+**Phase 3** is a single script run — see below.
 
-```
-Phase 1: 프로젝트 기본 정보 수집
-         ↓
-Phase 2: 기술 스택 선택
-         ↓
-Phase 3: 기능 모듈 선택
-         ↓
-Phase 4: 프로젝트 생성 실행
-         ↓
-Phase 5: 검증 및 서버 구동
-```
+**Phase 4** appends the new block to `PORTS.md`, then `pnpm install`, `docker compose up -d`,
+`pnpm db:migrate`, `pnpm db:seed`.
 
-### Phase 1: 프로젝트 기본 정보
+**Phase 5** runs `tsc --noEmit`, `pnpm lint`, `pnpm local`, plus the trace check.
 
-| 질문 | 예시 |
-|------|------|
-| 프로젝트 이름 | `my-awesome-app` |
-| 생성 경로 | `~/projects/` |
-| 주제/도메인 | 전자상거래, 블로그, SaaS |
-| 핵심 기능 3가지 | 사용자 인증, 상품 관리, 결제 |
-| 한 줄 설명 | "실시간 협업 문서 편집기" |
+## No template traces
 
-### Phase 2: 기술 스택
+A generated project inherits neither the template's git history nor its "this repo is a
+template" prose. `init-from-template.sh` does four things in one run:
 
-#### 데이터베이스
-| 옵션 | 설명 |
-|------|------|
-| PostgreSQL + Prisma | 관계형 DB, ORM 포함 (권장) |
-| MongoDB + Mongoose | NoSQL 문서 DB |
-| SQLite + Prisma | 경량 로컬 DB |
-| None | 데이터베이스 없음 |
+| Step | Contents |
+|---|---|
+| Substitute values | Name, database name, ports (`179xx` → `{BLOCK}xx`, including the literal `179xx` used in docs) |
+| Create `.env.local` | Copy `.env.example`, inject a random `JWT_SECRET` |
+| **Erase traces** | Delete the README's "start a new project from this template" section; strip the boilerplate notes from `CLAUDE.md`, `prisma/schema.prisma` and `.gitignore`; clean the "boilerplate" wording out of `meta.description` in all three i18n dictionaries |
+| **Restart history** | `git init -b main` plus a single `chore: init <name>` commit. The script excludes itself from that commit and deletes itself afterwards |
 
-#### 캐시 시스템
-| 옵션 | 설명 |
-|------|------|
-| Hybrid | Redis + InMemory 폴백 (권장) |
-| Redis (Upstash) | 프로덕션 권장 |
-| InMemory Only | 개발/소규모용 |
+If a `.git` already exists, it is removed and re-initialized **only** when its origin points at
+the template repo — otherwise the script leaves it alone and warns, so nobody's commits are
+destroyed. When no git identity is configured the commit is skipped; the repository is then
+empty, which still means zero template history.
 
-#### 인증 시스템
-| 옵션 | 설명 |
-|------|------|
-| JWT + OAuth | Google, GitHub, Apple 지원 (권장) |
-| JWT Only | 이메일/비밀번호만 |
-| None | 인증 없음 |
-
-### Phase 3: 기능 모듈
-
-#### 필수 모듈 (자동 포함)
-- 프로젝트 구조 (`src/`, `docs/`, `scripts/`)
-- TypeScript 설정 (경로 alias)
-- ESLint + Prettier
-- 환경 변수 템플릿
-
-#### 선택 모듈
-| 모듈 | 설명 | 기본값 |
-|------|------|--------|
-| i18n | 다국어 지원 (ko, en, ja) | Yes |
-| Testing | Jest + Playwright | Yes |
-| Middleware | API 미들웨어 체인 | Yes |
-| Docker | Dockerfile + compose | No |
-| Rate Limiting | API 요청 제한 | No |
-
-## 생성되는 프로젝트 구조
-
-```
-my-project/
-├── src/
-│   ├── app/                    # Next.js App Router
-│   │   ├── api/               # API Routes
-│   │   ├── [locale]/          # i18n 라우트
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── ui/               # shadcn/ui 컴포넌트
-│   │   └── layouts/
-│   ├── lib/                   # 비즈니스 로직
-│   │   ├── services/
-│   │   ├── validators/
-│   │   ├── hooks/
-│   │   ├── constants/
-│   │   └── utils/
-│   ├── shared/@withwiz/       # 재사용 가능 코드
-│   │   ├── middleware/       # API 미들웨어
-│   │   ├── constants/
-│   │   ├── utils/
-│   │   ├── error/
-│   │   ├── auth/
-│   │   └── logger/
-│   └── types/
-├── prisma/
-│   └── schema.prisma
-├── scripts/
-│   ├── local-startup.sh       # npm run local
-│   ├── dev-startup.sh         # npm run dev
-│   ├── build.sh              # npm run build:prod
-│   ├── start.sh              # npm run start:prod
-│   └── test-server-startup.sh # npm run test:server
-├── tests/
-│   ├── 01-unit/
-│   ├── 02-integration/
-│   ├── 03-api/
-│   └── 04-e2e/
-├── docs/
-│   └── claude/
-├── .env.example
-├── .env.local                 # 로컬 개발
-├── .env.dev                   # 공유 개발
-├── .env.production            # 프로덕션
-├── .env.test                  # 테스트
-├── package.json
-├── tsconfig.json
-├── next.config.js
-├── postcss.config.mjs
-├── components.json            # shadcn/ui
-├── CLAUDE.md
-└── .gitignore
-```
-
-## 환경 설정
-
-### 환경별 차이점
-
-| 설정 | .env.local | .env.dev | .env.production | .env.test |
-|------|------------|----------|-----------------|-----------|
-| PORT | 3000 | 3000 | - | 3555 |
-| CACHE_REDIS | false | true | true | false |
-| CACHE_INMEMORY | true | true | true | true |
-| RATE_LIMIT | false | true | true | false |
-| LOG_LEVEL | debug | debug | warn | error |
-
-### 스크립트 사용법
+## Using the template without the skill
 
 ```bash
-# 로컬 개발 (개인 환경)
-npm run local
-
-# 공유 개발 환경
-npm run dev
-
-# 프로덕션 빌드
-npm run build:prod
-
-# 프로덕션 서버 시작
-npm run start:prod
-
-# E2E 테스트 서버 (포트 3555)
-npm run test:server
+gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
+  && rm -rf my-saas/.git && cd my-saas \
+  && ./scripts/init-from-template.sh my-saas 180 \
+  && pnpm install && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm local
 ```
 
-## 미들웨어 시스템
+`rm -rf my-saas/.git` cuts the template history; `init-from-template.sh` starts a fresh one.
+Skipping either step drags the template's commits into the new project.
 
-### API 래퍼 사용
+## Verifying a generated project
 
-```typescript
-// src/app/api/example/route.ts
-import { withPublicApi, withAuthApi, withAdminApi } from '@withwiz/middleware';
-import { NextResponse } from 'next/server';
+All four must come back empty (or with a single commit):
 
-// 공개 API (인증 불필요)
-export const GET = withPublicApi(async (ctx) => {
-  return NextResponse.json({ message: 'Hello' });
-});
-
-// 인증 필요 API
-export const POST = withAuthApi(async (ctx) => {
-  const userId = ctx.user!.id;
-  return NextResponse.json({ userId });
-});
-
-// 관리자 전용 API
-export const DELETE = withAdminApi(async (ctx) => {
-  return NextResponse.json({ deleted: true });
-});
+```bash
+grep -rn "nextjs-16-project-template\|nextjs_16_project_template" . --exclude-dir=.git --exclude-dir=node_modules
+grep -rni "boilerplate\|보일러플레이트\|ボイラープレート\|use this template\|degit\|init-from-template" . --exclude-dir=.git --exclude-dir=node_modules
+grep -rn "179" . --exclude-dir=.git --exclude-dir=node_modules --exclude=pnpm-lock.yaml
+git log --oneline    # exactly one commit (chore: init <name>), or none
 ```
 
-### 커스텀 미들웨어 체인
+The `179` hits inside `pnpm-lock.yaml` are a package version (`caniuse-lite@1.0.30001799`) — ignore them.
 
-```typescript
-import { withCustomApi, MiddlewareChain } from '@withwiz/middleware';
-import { errorHandlerMiddleware } from '@withwiz/middleware';
-import { initRequestMiddleware } from '@withwiz/middleware';
-import { createRateLimitMiddleware } from '@withwiz/middleware';
+Then check the app itself: `/` redirects to `/{locale}`, the home page renders, the language
+switcher works across ko/en/ja, `/{locale}/admin` gates unauthenticated visitors to `/login`,
+the seeded Owner account can sign in, and the console stays clean through theme and locale changes.
 
-export const POST = withCustomApi(
-  async (ctx) => {
-    return NextResponse.json({ data: 'custom' });
-  },
-  (chain) => chain
-    .use(errorHandlerMiddleware)
-    .use(initRequestMiddleware)
-    .use(createRateLimitMiddleware('custom'))
-);
-```
+## Troubleshooting
 
-### 미들웨어 체인 순서
+| Problem | Fix |
+|---|---|
+| `degit` fails on the private repo | Use `gh repo clone` instead |
+| Port conflict | Re-check the free block in `PORTS.md`, or use a spare port inside the block |
+| `prisma generate` fails | `pnpm prisma generate` |
+| pnpm skips builds (`IGNORED_BUILDS`) | Set the entry under `allowBuilds:` in `pnpm-workspace.yaml` to `true` |
+
+## Repository layout
 
 ```
-errorHandlerMiddleware
-       ↓
-securityMiddleware (TRACE/TRACK 차단, Content-Type 검증)
-       ↓
-corsMiddleware
-       ↓
-initRequestMiddleware (requestId, locale, startTime)
-       ↓
-authMiddleware (선택적)
-       ↓
-adminMiddleware (선택적)
-       ↓
-rateLimitMiddleware
-       ↓
-responseLoggerMiddleware
-       ↓
-handler (비즈니스 로직)
+nextjs-project-wizard/
+├── SKILL.md                  # Single source of truth for the agent's behaviour
+├── README.md                 # This file (human-facing)
+├── README.ko.md              # Korean version
+└── scripts/
+    └── create-project.sh     # Legacy offline fallback — see below
 ```
 
-## 의존성 규칙
+`scripts/create-project.sh` predates the template-repo approach. It creates an empty Next.js 15
+directory skeleton with no dependencies and no integration, and the standard workflow never uses
+it. It exists only for the case where the template repo is completely unreachable.
 
-```
-✅ 허용 (단방향):
-src/app/        → src/shared/@withwiz/
-src/lib/        → src/shared/@withwiz/
-src/components/ → src/shared/@withwiz/
+The substitution script (`init-from-template.sh`) is **not** here — it lives inside the template
+repo, under `scripts/` of the project you just fetched.
 
-❌ 금지 (역방향):
-src/shared/@withwiz/ → src/lib/
-src/shared/@withwiz/ → src/app/
-```
+## Requirements
 
-`src/shared/@withwiz/`는 프로젝트에 독립적이어야 하며, 다른 프로젝트에서 그대로 재사용 가능해야 합니다.
-
-## 프로젝트 타입별 추천 설정
-
-| 프로젝트 타입 | DB | 캐시 | 인증 | 추가 모듈 |
-|--------------|-----|------|------|----------|
-| SaaS | PostgreSQL | Hybrid | JWT+OAuth | Rate Limit, Analytics |
-| 블로그 | PostgreSQL | InMemory | JWT Only | i18n |
-| 이커머스 | PostgreSQL | Hybrid | JWT+OAuth | Email, Analytics |
-| 포트폴리오 | SQLite | None | None | - |
-| API 서버 | PostgreSQL | Redis | JWT | Rate Limit, API Docs |
-
-## 템플릿 목록
-
-### 설정 파일
-- `package.json.template` - Node 20+, Next.js 15, React 19
-- `tsconfig.json.template` - 경로 alias (@/*, @withwiz/*)
-- `next.config.js.template` - standalone, 보안 헤더
-- `postcss.config.mjs.template` - Tailwind CSS 4
-- `components.json.template` - shadcn/ui
-
-### 환경 변수
-- `.env.example.template`
-- `.env.local.template`
-- `.env.dev.template`
-- `.env.production.template`
-- `.env.test.template`
-
-### 스크립트
-- `scripts/local-startup.sh.template`
-- `scripts/dev-startup.sh.template`
-- `scripts/build.sh.template`
-- `scripts/start.sh.template`
-- `scripts/test-server-startup.sh.template`
-
-### 미들웨어
-- `types.ts.template` - IApiContext, TApiMiddleware
-- `middleware-chain.ts.template` - MiddlewareChain 클래스
-- `auth.ts.template` - JWT 인증
-- `cors.ts.template` - CORS 설정
-- `error-handler.ts.template` - AppError 처리
-- `rate-limit.ts.template` - Rate Limiting
-- `security.ts.template` - 보안 헤더
-- `init-request.ts.template` - 요청 초기화
-- `response-logger.ts.template` - 로깅
-- `wrappers.ts.template` - API 래퍼
-- `index.ts.template` - 통합 export
-
-## 문제 해결
-
-| 문제 | 해결 |
-|------|------|
-| prisma generate 실패 | `npx prisma generate` 실행 |
-| TypeScript 경로 에러 | tsconfig.json paths 확인 |
-| 빌드 실패 | `rm -rf .next && npm run build` |
-| 포트 충돌 | `PORT=3001 npm run dev` |
-| JWT 에러 | JWT_SECRET 32자 이상 확인 |
-
-## 요구사항
-
-- Node.js >= 20.0.0
-- npm >= 10.0.0
+- Node.js >= 22, pnpm
+- `gh` CLI, authenticated (`gh auth status`) with access to `greeun/nextjs-16-project-template`
+- Docker (for the PostgreSQL container)
 - Claude Code CLI
 
-## 라이선스
+## Reference
+
+- Template repo: <https://github.com/greeun/nextjs-16-project-template> (private, GitHub Template)
+- Port convention: the workspace-level `PORTS.md`
+- [Next.js docs](https://nextjs.org/docs) · [Tailwind CSS 4](https://tailwindcss.com)
+
+## License
 
 MIT
-
-## 참조
-
-- [url-shortener-mvp](https://github.com/your-repo/url-shortener-mvp) - 원본 프로젝트
-- [Next.js 15 Documentation](https://nextjs.org/docs)
-- [Tailwind CSS 4](https://tailwindcss.com)
-- [shadcn/ui](https://ui.shadcn.com)
