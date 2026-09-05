@@ -1,7 +1,7 @@
 ---
 name: nextjs-project-wizard
 description: Use when user wants to create a new Next.js 16 project with withwiz integration. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
-version: 1.1.1
+version: 1.2.0
 ---
 
 # Next.js 16 Project Wizard
@@ -36,7 +36,8 @@ template repo `greeun/nextjs-16-project-template` 에 이미 통합·검증돼 �
 | 이메일 | nodemailer SMTP(toolkit SmtpEmailSender), 미설정 시 콘솔 폴백 |
 | 인프라 | Docker(compose postgres:16 + standalone Dockerfile) · Vitest + Playwright · .env 4프로필 |
 
-withwiz 패키지는 **npm 게시 버전**(`^0.9.0`/`^0.1.0`/`^0.5.0`)을 쓴다 (file: dep 아님).
+withwiz 패키지는 **npm 게시 최신 버전**을 쓴다 (file: dep 아님). 템플릿의 `package.json`·lock 은
+게시 시점에 고정돼 있어 최신에 뒤처질 수 있으므로, **Phase 4 에서 반드시 `@latest` 로 올린다.**
 
 ---
 
@@ -49,7 +50,7 @@ Phase 2: 템플릿 가져오기 (gh repo clone --depth=1 + .git 제거)
     ↓
 Phase 3: 치환 + 템플릿 흔적 제거 (init-from-template.sh)
     ↓
-Phase 4: PORTS.md 등록 + 의존성/DB 셋업
+Phase 4: PORTS.md 등록 + 의존성(withwiz 최신화)/DB 셋업
     ↓
 Phase 5: 검증 및 서버 구동
 ```
@@ -96,8 +97,8 @@ npx degit greeun/nextjs-16-project-template "<TARGET_PATH>"
 > **템플릿 저장소 접근 불가 시**: 방법 A(`gh repo clone`)가 인증/권한/네트워크로 실패하고
 > 방법 B(degit)도 private 라 불가하면, **여기서 멈추고** 사용자에게 다음을 안내한다 —
 > (1) `gh auth status` 로 인증 확인, (2) `greeun/nextjs-16-project-template` 접근 권한 요청,
-> (3) 저장소가 public 이면 degit 재시도. 임의로 파일을 수동 스캐폴딩하지 말 것(스택 정합성 깨짐).
-> 부득이 오프라인 스캐폴딩이 필요하면 아래 "번들 폴백 스크립트"를 참고한다(구버전, 최소 골격만 생성).
+> (3) 저장소가 public 이면 degit 재시도. **임의로 파일을 수동 스캐폴딩하지 말 것**(스택 정합성 깨짐).
+> 이 스킬에는 폴백 스캐폴더가 없다. 템플릿에 접근할 수 없으면 프로젝트를 만들지 않는다.
 
 ---
 
@@ -135,9 +136,18 @@ cd "<TARGET_PATH>"
    ```
    | {BLOCK}xx | {PROJECT_NAME} | 앱 {BLOCK}00✓ · DB {BLOCK}01✓ · 테스트 {BLOCK}05✓ · 테스트DB {BLOCK}06✓ · Studio {BLOCK}30✓ — 위저드 생성(nextjs-16-project-template 템플릿) |
    ```
-2. 의존성·DB:
+2. 의존성 설치 + **withwiz 최신화**:
    ```bash
-   pnpm install
+   pnpm install                      # Phase 3 이후에 실행 — postinstall(prisma generate)이 .env.local 의 DATABASE_URL 을 요구한다
+   pnpm add @withwiz/toolkit@latest @withwiz/ui@latest @withwiz/auth-ui@latest
+   #   package.json 범위와 lock 을 npm 게시 최신 버전으로 갱신. 템플릿 고정 버전을 그대로 쓰지 않는다.
+   pnpm ls @withwiz/toolkit @withwiz/ui @withwiz/auth-ui   # 설치 버전 확인
+   ```
+   최신화 후 `pnpm typecheck && pnpm lint && pnpm test` 가 실패하면 그 버전의 호환성 문제이므로
+   사용자에게 알리고, 실패한 패키지만 직전 버전으로 되돌린다. 템플릿의 `pnpm-workspace.yaml` 에
+   남아 있는 `minimumReleaseAgeExclude` 항목(`@withwiz/ui@0.2.0`)은 구버전 잔재이므로 제거한다.
+3. DB:
+   ```bash
    docker compose up -d              # postgres:16, 호스트 포트 {BLOCK}01
    pnpm db:migrate                   # 최초 마이그레이션 생성
    pnpm db:seed                      # Owner 계정(.env.local OWNER_*)
@@ -148,8 +158,9 @@ cd "<TARGET_PATH>"
 ## Phase 5: 검증 및 서버 구동
 
 ```bash
-pnpm exec tsc --noEmit      # 타입체크
+pnpm typecheck              # tsc --noEmit
 pnpm lint                   # eslint
+pnpm test                   # vitest
 pnpm local                  # → http://localhost:{BLOCK}00
 ```
 
@@ -171,6 +182,7 @@ git log --oneline        # 커밋 1개(chore: init <이름>) 또는 0개여야 �
 - [ ] 로그인(시드 Owner 계정) → admin 진입
 - [ ] 콘솔 에러 0 (테마/언어변경 포함)
 - [ ] 템플릿 흔적 0 (위 grep 4종)
+- [ ] withwiz 3종이 `npm view <pkg> version` 과 같은 최신 버전
 
 ---
 
@@ -181,10 +193,12 @@ git log --oneline        # 커밋 1개(chore: init <이름>) 또는 0개여야 �
 gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
   && rm -rf my-saas/.git && cd my-saas \
   && ./scripts/init-from-template.sh my-saas 180 \
-  && pnpm install && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm local
+  && pnpm install \
+  && pnpm add @withwiz/toolkit@latest @withwiz/ui@latest @withwiz/auth-ui@latest \
+  && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm local
 ```
 `rm -rf my-saas/.git` 가 템플릿 히스토리를 끊고, `init-from-template.sh` 가 새 히스토리를 시작한다.
-이 두 단계를 건너뛰면 템플릿 커밋이 그대로 딸려온다.
+이 두 단계를 건너뛰면 템플릿 커밋이 그대로 딸려온다. `pnpm add ...@latest` 가 withwiz 를 최신화한다.
 
 ### 프로젝트 타입별 추가 설정 (template 위에 얹기)
 | 타입 | 추가 작업 |
@@ -197,6 +211,8 @@ gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
 | 문제 | 해결 |
 |---|---|
 | degit private 실패 | `gh repo clone` 방법 A 사용 |
+| `pnpm install` 이 postinstall 에서 `Cannot resolve environment variable: DATABASE_URL` | `.env.local` 이 없다. Phase 3(`init-from-template.sh`)을 먼저 실행한다 |
+| withwiz 최신화 후 typecheck/lint 실패 | 실패 패키지만 직전 버전으로 고정하고 사용자에게 보고 |
 | 포트 충돌 | PORTS.md에서 빈 블록 재확인, 블록 내 예비 포트 사용 |
 | prisma generate 실패 | `pnpm prisma generate` |
 | pnpm 빌드 무시(IGNORED_BUILDS) | `pnpm-workspace.yaml` 의 `allowBuilds:` 항목을 `true` 로 |
@@ -205,9 +221,4 @@ gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
 - **Template repo**: https://github.com/greeun/nextjs-16-project-template (private, GitHub Template)
 - 치환 스크립트: `scripts/init-from-template.sh` — **template repo 안에 있다**(Phase 2 에서 가져온 프로젝트의 `scripts/` 아래). 이 스킬 폴더에는 없다.
 - 포트 표준: 워크스페이스 `PORTS.md`
-
-### 번들 폴백 스크립트 (구버전)
-- 이 스킬 폴더의 [`scripts/create-project.sh`](scripts/create-project.sh) 는 **template repo 방식 이전의 구버전** 스캐폴더다.
-  Next.js 15 기준 **빈 디렉토리 골격만** 만들고(의존성·통합 없음), 위 표준 워크플로우(Phase 2~5)에서는 **사용하지 않는다**.
-- 용도: template repo 에 전혀 접근할 수 없는 오프라인 상황의 최후 폴백뿐. 정상 경로에서는 항상 template repo 방식을 쓴다.
-  사용법: `./scripts/create-project.sh <project-name> <target-path>`
+- withwiz 최신 버전 확인: `npm view @withwiz/toolkit version` (ui · auth-ui 동일)
