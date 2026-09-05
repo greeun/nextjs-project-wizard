@@ -1,7 +1,7 @@
 ---
 name: nextjs-project-wizard
 description: Use when user wants to create a new Next.js 16 project with withwiz integration. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
-version: 1.2.0
+version: 1.2.1
 ---
 
 # Next.js 16 Project Wizard
@@ -74,17 +74,16 @@ Phase 5: 검증 및 서버 구동
 
 ## Phase 2: 템플릿 가져오기
 
-히스토리 없이 파일만 가져온다. **template 이 private 이므로 `gh` 인증 clone 이 1차**
-(degit 은 private repo 인증을 못 해 실패한다 — public 전환 시에만 사용):
+히스토리 없이 파일만 가져온다. template 은 **public** 이므로 인증 없이 degit 이 1차이고,
+degit 이 없거나 실패하면 `gh` 얕은 clone 으로 대체한다:
 
 ```bash
-# 방법 A — gh clone 후 .git 제거 (private 권장)
-gh auth status   # 인증 확인
+# 방법 A — degit: 파일만 가져오고 .git 을 만들지 않는다 (가장 가벼움, 인증 불필요)
+npx degit greeun/nextjs-16-project-template "<TARGET_PATH>"
+
+# 방법 B — gh 얕은 clone 후 .git 제거 (degit 미설치·네트워크 제한 시)
 gh repo clone greeun/nextjs-16-project-template "<TARGET_PATH>" -- --depth=1 \
   && rm -rf "<TARGET_PATH>/.git"
-
-# 방법 B — repo 가 public 일 때만: degit (가장 가벼움)
-npx degit greeun/nextjs-16-project-template "<TARGET_PATH>"
 ```
 
 > GitHub UI "Use this template" 도 가능하나, 위저드는 CLI 로 진행한다.
@@ -94,10 +93,10 @@ npx degit greeun/nextjs-16-project-template "<TARGET_PATH>"
 > 문서·주석 정리도 Phase 3 이 처리한다. 여기서는 `.git` 제거만 확실히 한다 —
 > `ls -d "<TARGET_PATH>/.git"` 가 "No such file" 이어야 다음 단계로 넘어간다.
 
-> **템플릿 저장소 접근 불가 시**: 방법 A(`gh repo clone`)가 인증/권한/네트워크로 실패하고
-> 방법 B(degit)도 private 라 불가하면, **여기서 멈추고** 사용자에게 다음을 안내한다 —
-> (1) `gh auth status` 로 인증 확인, (2) `greeun/nextjs-16-project-template` 접근 권한 요청,
-> (3) 저장소가 public 이면 degit 재시도. **임의로 파일을 수동 스캐폴딩하지 말 것**(스택 정합성 깨짐).
+> **템플릿 저장소 접근 불가 시**: 방법 A(degit)와 방법 B(`gh repo clone`)가 모두 네트워크 등으로
+> 실패하면, **여기서 멈추고** 사용자에게 다음을 안내한다 —
+> (1) 네트워크·프록시 확인, (2) https://github.com/greeun/nextjs-16-project-template 접근 여부 확인,
+> (3) `gh auth status` 확인 후 방법 B 재시도. **임의로 파일을 수동 스캐폴딩하지 말 것**(스택 정합성 깨짐).
 > 이 스킬에는 폴백 스캐폴더가 없다. 템플릿에 접근할 수 없으면 프로젝트를 만들지 않는다.
 
 ---
@@ -190,15 +189,15 @@ git log --oneline        # 커밋 1개(chore: init <이름>) 또는 0개여야 �
 
 ### 한 줄 요약 흐름
 ```bash
-gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
-  && rm -rf my-saas/.git && cd my-saas \
+npx degit greeun/nextjs-16-project-template my-saas && cd my-saas \
   && ./scripts/init-from-template.sh my-saas 180 \
   && pnpm install \
   && pnpm add @withwiz/toolkit@latest @withwiz/ui@latest @withwiz/auth-ui@latest \
   && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm local
 ```
-`rm -rf my-saas/.git` 가 템플릿 히스토리를 끊고, `init-from-template.sh` 가 새 히스토리를 시작한다.
-이 두 단계를 건너뛰면 템플릿 커밋이 그대로 딸려온다. `pnpm add ...@latest` 가 withwiz 를 최신화한다.
+degit 은 `.git` 없이 파일만 가져오고, `init-from-template.sh` 가 새 히스토리를 시작한다.
+`gh repo clone` 을 썼다면 `rm -rf my-saas/.git` 을 먼저 실행해야 템플릿 커밋이 딸려오지 않는다.
+`pnpm add ...@latest` 가 withwiz 를 최신화한다.
 
 ### 프로젝트 타입별 추가 설정 (template 위에 얹기)
 | 타입 | 추가 작업 |
@@ -210,7 +209,7 @@ gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
 ### Common Issues
 | 문제 | 해결 |
 |---|---|
-| degit private 실패 | `gh repo clone` 방법 A 사용 |
+| degit 실패(미설치·네트워크) | `gh repo clone --depth=1` 방법 B 사용 후 `.git` 제거 |
 | `pnpm install` 이 postinstall 에서 `Cannot resolve environment variable: DATABASE_URL` | `.env.local` 이 없다. Phase 3(`init-from-template.sh`)을 먼저 실행한다 |
 | withwiz 최신화 후 typecheck/lint 실패 | 실패 패키지만 직전 버전으로 고정하고 사용자에게 보고 |
 | 포트 충돌 | PORTS.md에서 빈 블록 재확인, 블록 내 예비 포트 사용 |
@@ -218,7 +217,7 @@ gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
 | pnpm 빌드 무시(IGNORED_BUILDS) | `pnpm-workspace.yaml` 의 `allowBuilds:` 항목을 `true` 로 |
 
 ### Reference
-- **Template repo**: https://github.com/greeun/nextjs-16-project-template (private, GitHub Template)
+- **Template repo**: https://github.com/greeun/nextjs-16-project-template (public, GitHub Template)
 - 치환 스크립트: `scripts/init-from-template.sh` — **template repo 안에 있다**(Phase 2 에서 가져온 프로젝트의 `scripts/` 아래). 이 스킬 폴더에는 없다.
 - 포트 표준: 워크스페이스 `PORTS.md`
 - withwiz 최신 버전 확인: `npm view @withwiz/toolkit version` (ui · auth-ui 동일)

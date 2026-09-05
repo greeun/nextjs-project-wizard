@@ -52,7 +52,7 @@ Ask Claude Code in plain language:
 `create project`, `scaffold project`, `init project`, `boilerplate setup`.
 
 The wizard then walks five phases: collect info (name · path · 3-digit port block from the
-workspace `PORTS.md`) → fetch the template with `gh repo clone --depth=1` and drop `.git` →
+workspace `PORTS.md`) → fetch the template with `degit` (or `gh repo clone --depth=1` and drop `.git`) →
 run `init-from-template.sh` → register the port block, `pnpm install`, upgrade `@withwiz/*` to
 `@latest`, bring up the database → typecheck, lint, test, start the server and confirm zero
 template traces.
@@ -60,16 +60,16 @@ template traces.
 ## Using the template without the skill
 
 ```bash
-gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
-  && rm -rf my-saas/.git && cd my-saas \
+npx degit greeun/nextjs-16-project-template my-saas && cd my-saas \
   && ./scripts/init-from-template.sh my-saas 180 \
   && pnpm install \
   && pnpm add @withwiz/toolkit@latest @withwiz/ui@latest @withwiz/auth-ui@latest \
   && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm local
 ```
 
-`rm -rf my-saas/.git` cuts the template history and `init-from-template.sh` starts a fresh one;
-skipping either step drags the template's commits into the new project. Run `pnpm install`
+`degit` copies the files without a `.git`, and `init-from-template.sh` starts a fresh history.
+If you use `gh repo clone` instead, run `rm -rf my-saas/.git` first, or the template's commits
+end up in the new project. Run `pnpm install`
 only after the init script, because the template's `postinstall` (`prisma generate`) needs the
 `DATABASE_URL` that the script writes into `.env.local`.
 
@@ -88,13 +88,13 @@ repo, under `scripts/` of the project you just fetched.
 ## Requirements
 
 - Node.js >= 22, pnpm
-- `gh` CLI, authenticated (`gh auth status`) with access to `greeun/nextjs-16-project-template`
+- `npx` (for `degit`), or the `gh` CLI as a fallback
 - Docker (for the PostgreSQL container)
 - Claude Code CLI
 
 ## Reference
 
-- Template repo: <https://github.com/greeun/nextjs-16-project-template> (private, GitHub Template)
+- Template repo: <https://github.com/greeun/nextjs-16-project-template> (public, GitHub Template)
 - Port convention: the workspace-level `PORTS.md`
 - [Next.js docs](https://nextjs.org/docs) · [Tailwind CSS 4](https://tailwindcss.com)
 

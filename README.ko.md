@@ -49,23 +49,23 @@ Claude Code 에 평문으로 요청한다:
 `create project`, `scaffold project`, `init project`, `boilerplate setup`
 
 위저드는 5단계로 진행한다. 정보 수집(이름 · 경로 · 워크스페이스 `PORTS.md` 기준 3자리 포트 블록)
-→ `gh repo clone --depth=1` 로 템플릿을 가져오고 `.git` 제거 → `init-from-template.sh` 실행 →
+→ `degit`(또는 `gh repo clone --depth=1` 후 `.git` 제거)으로 템플릿을 가져옴 → `init-from-template.sh` 실행 →
 포트 블록 등록, `pnpm install`, `@withwiz/*` 를 `@latest` 로 최신화, DB 구동 → 타입체크·lint·테스트·
 서버 구동과 템플릿 흔적 0 확인.
 
 ## 스킬 없이 템플릿만 쓸 때
 
 ```bash
-gh repo clone greeun/nextjs-16-project-template my-saas -- --depth=1 \
-  && rm -rf my-saas/.git && cd my-saas \
+npx degit greeun/nextjs-16-project-template my-saas && cd my-saas \
   && ./scripts/init-from-template.sh my-saas 180 \
   && pnpm install \
   && pnpm add @withwiz/toolkit@latest @withwiz/ui@latest @withwiz/auth-ui@latest \
   && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm local
 ```
 
-`rm -rf my-saas/.git` 가 템플릿 히스토리를 끊고, `init-from-template.sh` 가 새 히스토리를
-시작한다. 두 단계 중 하나라도 건너뛰면 템플릿 커밋이 그대로 딸려온다. `pnpm install` 은 반드시
+`degit` 은 `.git` 없이 파일만 가져오고, `init-from-template.sh` 가 새 히스토리를 시작한다.
+`gh repo clone` 을 썼다면 `rm -rf my-saas/.git` 을 먼저 실행해야 템플릿 커밋이 딸려오지 않는다.
+`pnpm install` 은 반드시
 init 스크립트 뒤에 실행한다. 템플릿의 `postinstall`(`prisma generate`)이 스크립트가 `.env.local`
 에 기록하는 `DATABASE_URL` 을 요구하기 때문이다.
 
@@ -84,13 +84,13 @@ nextjs-project-wizard/
 ## 요구 사항
 
 - Node.js >= 22, pnpm
-- `gh` CLI 인증(`gh auth status`) + `greeun/nextjs-16-project-template` 접근 권한
+- `npx`(degit 실행용), 대체 수단으로 `gh` CLI
 - Docker (PostgreSQL 컨테이너용)
 - Claude Code CLI
 
 ## 참고
 
-- Template repo: <https://github.com/greeun/nextjs-16-project-template> (private, GitHub Template)
+- Template repo: <https://github.com/greeun/nextjs-16-project-template> (public, GitHub Template)
 - 포트 표준: 워크스페이스 `PORTS.md`
 - [Next.js 문서](https://nextjs.org/docs) · [Tailwind CSS 4](https://tailwindcss.com)
 
