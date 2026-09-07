@@ -1,7 +1,7 @@
 ---
 name: nextjs-project-wizard
 description: Use when user wants to create a new Next.js 16 project with withwiz integration. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
-version: 1.2.1
+version: 1.3.0
 ---
 
 # Next.js 16 Project Wizard
@@ -163,6 +163,17 @@ pnpm test                   # vitest
 pnpm local                  # → http://localhost:{BLOCK}00
 ```
 
+서버가 뜨면 콘솔에서 **구동 배너와 요청 로그**를 확인한다(아래 "서버 구동 처리·콘솔 로그 표준").
+템플릿이 가져온 배너가 DB 점검·마이그레이션 판정·요청 로그 중 하나라도 빠져 있으면 이 단계에서
+채운다 — 새 프로젝트를 표준 미달 상태로 넘기지 않는다.
+
+```bash
+# 배너: DB Ping 이 ✓ 이고 Migrations 가 "up to date" 여야 한다
+pnpm local 2>&1 | sed -n '/━━━/,/Ready at/p'
+# 요청 로그: API 한 번 호출하면 "API <상태> <메서드> <경로> (<ms>ms)" 한 줄이 찍혀야 한다
+curl -s -o /dev/null http://localhost:{BLOCK}00/api/example
+```
+
 템플릿 흔적 0 확인 (셋 다 출력이 없어야 통과):
 
 ```bash
@@ -182,6 +193,78 @@ git log --oneline        # 커밋 1개(chore: init <이름>) 또는 0개여야 �
 - [ ] 콘솔 에러 0 (테마/언어변경 포함)
 - [ ] 템플릿 흔적 0 (위 grep 4종)
 - [ ] withwiz 3종이 `npm view <pkg> version` 과 같은 최신 버전
+- [ ] 구동 배너에 DB Ping ✓ · Migrations up to date · 비밀 값은 앞 4글자만
+- [ ] API 요청마다 `API <상태> <메서드> <경로> (<ms>ms)` 한 줄이 남고 쿼리 문자열은 없음
+
+---
+
+## 서버 구동 처리·콘솔 로그 표준
+
+withwiz 서버 프로젝트는 **부팅 시 배너 하나, 요청마다 로그 한 줄**을 같은 형식으로 낸다.
+기준 구현은 두 곳이다 — `url-shortener-mvp`(`src/instrumentation.ts`, toolkit 미들웨어 체인의
+`responseLoggerMiddleware`)와 `groupware-poc`(`src/lib/core/startup-banner.ts` ·
+`src/lib/core/request-log.ts`, 2026-09-08). 템플릿의 배너(`src/instrumentation.ts` +
+`src/startup-banner.ts`)는 환경 변수 마스킹까지만 하므로, 아래 셋 중 빠진 것을 Phase 5 에서 채운다.
+
+### 1. 구동 배너 — toolkit `printStartupBanner`
+
+`@withwiz/toolkit/core/utils/startup-banner`(0.13 이상)의 `printStartupBanner`·`mask`·`status`·
+`feature`·`modeLabel`·`c` 를 쓴다. 프로젝트 안에 배너 사본을 두지 않는다(템플릿의
+`src/startup-banner.ts` 는 toolkit 이 이 유틸을 갖기 전의 잔재다 — toolkit 최신화 뒤 지운다).
+`register()` 에서 **toolkit 초기화 → logger 동적 import → 배너 → 기동 로그** 순서다.
+
+섹션과 값은 이 표를 따른다. 값은 **마스킹**한다 — URL 은 호스트만(`mask(v, "url")`), 비밀은
+앞 4글자(`mask(v, "secret")`). 원문 비밀이 콘솔에 나가면 실패다.
+
+| 섹션 | 줄 |
+|---|---|
+| ⚙️ Environment | Mode(`modeLabel`) · Node · Port · Base URL · Cookie Secure |
+| 💾 Database | DB 호스트 · **Ping(왕복 ms 또는 ✗ 사유)** · Server(`SELECT version()`) · **Migrations** |
+| 🔐 Auth & Security | JWT Secret · OAuth 공급자별 ✓/✗ · Rate Limiting(끄는 스위치가 켜져 있으면 ⚠) |
+| 🌐 External Services | SMTP/Graph 등 외부 연동의 모드와 구성 여부 |
+| 📝 Logging | Level · Console · File |
+
+**Migrations 줄이 이 배너의 존재 이유다.** 디스크의 `prisma/migrations` 디렉터리 목록과
+`_prisma_migrations` 의 완료 행(`finished_at IS NOT NULL AND rolled_back_at IS NULL`)을 대조해,
+디스크에는 있는데 적용 기록이 없는 것을 **이름까지** 찍고 `logger.error` 로도 남긴다.
+배포 플랫폼의 pre-deploy 훅이 돌지 않아 새 코드가 없는 테이블을 읽는 사고는 헬스체크로
+잡히지 않는다(헬스체크는 통과하고 로그인한 사용자만 500 을 본다) — 부팅 시점에 이 줄이 잡는다.
+
+- 판정 세 갈래: `✓ up to date (N applied)` · `✗ K PENDING: <이름들>` · 디렉터리를 못 읽으면
+  `⚠ 확인 불가`(최신이라고 말하지 않는다). `_prisma_migrations` 표가 없으면 전부 pending 이다.
+- DB 점검은 **3초 타임아웃**이고 실패해도 던지지 않는다 — 배너는 진단이고 게이트는
+  `/api/health` 다. Prisma 질의는 중단할 수 없으므로 `Promise.race` 로 경주만 한다.
+- 순수 함수로 나눈다: `probeDatabase(client, migrationDirs)` → `DbProbe`,
+  `bannerSections(input)` → `BannerSection[]`. 단위 테스트가 마스킹과 세 갈래 판정을 한 줄씩
+  대조하고, 통합 테스트가 실 테스트 DB 에서 `pending: []` 을 지킨다.
+- 배너는 toolkit 이 `console.log` 로 낸다 — 프로젝트 코드는 `console.*` 을 부르지 않는다
+  (ESLint `no-console` 유지).
+
+### 2. 요청 로그 — API 라우트마다 한 줄
+
+형식은 `API <상태> <메서드> <경로> (<ms>ms) ip:<IP>` 이고 `logger.info` 로 낸다. Next dev 가 찍는
+`POST /api/... 401 in 668ms` 는 개발 서버 전용이라 **운영에서는 이 줄이 유일한 요청 기록**이다.
+
+- toolkit 미들웨어 체인(`withPublicApi`/`withAuthApi`)을 쓰는 프로젝트는 체인의
+  `responseLoggerMiddleware` 가 이미 낸다 — 체인을 직접 구성할 때 그 단계를 빼지 않는다.
+- 체인을 쓰지 않는 평범한 핸들러는 래퍼 `withRequestLog(handler)` 로 감싼다
+  (`export const POST = withRequestLog(async (req) => { ... })`). 응답은 손대지 않고 시간만
+  재며, 핸들러가 던지면 `logger.error` 로 남기고 그대로 다시 던진다.
+- **pathname 만 싣는다.** 쿼리에는 OAuth `code`·`state` 와 재설정 토큰이 실리고 본문에는
+  자격증명이 실린다 — 둘 다 로그에 남기지 않는다. 단위 테스트가 이 미기록을 단언한다.
+- `/api/health` 는 예외다 — 배포 플랫폼이 주기적으로 두드려 로그가 그것으로 채워진다.
+
+### 3. 로거 초기화 순서
+
+toolkit logger 는 **import 평가 시점에** transport·레벨을 확정하고, toolkit 캐시 매니저가 그
+logger 를 끌고 온다. 그래서 `initializeLogger` 를 부르는 모듈(`logger-init.ts`)이 캐시·인증
+설정보다 **먼저 import** 되어야 하고, `instrumentation.ts` 는 logger 를 파일 상단이 아니라
+`register()` 안에서 초기화 **뒤에** 동적 import 한다. 어긋나도 아무것도 던지지 않고 설정만
+기본값으로 굳으므로, 테스트는 설정이 아니라 **winston 인스턴스의 `level`** 을 단언한다.
+
+레벨·목적지는 `LOG_LEVEL`·`LOG_CONSOLE_ENABLED`·`LOG_FILE_ENABLED` 로 정하고(콘솔 기본 켜짐,
+파일 기본 꺼짐 — 운영은 컨테이너 stdout 수집이 표준), `Error` 를 meta 에 통째로 넣지 않는다
+(포매터의 `JSON.stringify` 가 `{}` 로 만든다 — `{ reason: e.message }` 로 꺼내 담는다).
 
 ---
 
