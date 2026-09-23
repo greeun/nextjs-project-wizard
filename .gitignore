@@ -18,3 +18,10 @@ __pycache__/
 # env files — 이 저장소는 env 파일을 두지 않는다. 실수로 커밋되는 것만 막는 가드.
 # (.env*.template 예외는 templates/ 디렉토리와 함께 제거됐다)
 .env*
+
+# superpowers (auto-installed; do not track)
+.superpowers/
+docs/superpowers/
+
+# local tooling (machine-specific)
+.axt-profile.json*
