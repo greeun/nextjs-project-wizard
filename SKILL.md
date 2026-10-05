@@ -1,7 +1,7 @@
 ---
 name: nextjs-project-wizard
 description: Use when user wants to create a new Next.js 16 project with withwiz integration. Triggers on "새 프로젝트", "프로젝트 생성", "create project", "scaffold project", "init project", "프로젝트 세팅", "boilerplate setup".
-version: 1.3.0
+version: 1.3.1
 ---
 
 # Next.js 16 Project Wizard
@@ -201,10 +201,10 @@ git log --oneline        # 커밋 1개(chore: init <이름>) 또는 0개여야 �
 ## 서버 구동 처리·콘솔 로그 표준
 
 withwiz 서버 프로젝트는 **부팅 시 배너 하나, 요청마다 로그 한 줄**을 같은 형식으로 낸다.
-기준 구현은 두 곳이다 — `url-shortener-mvp`(`src/instrumentation.ts`, toolkit 미들웨어 체인의
-`responseLoggerMiddleware`)와 `groupware-poc`(`src/lib/core/startup-banner.ts` ·
-`src/lib/core/request-log.ts`, 2026-09-08). 템플릿의 배너(`src/instrumentation.ts` +
-`src/startup-banner.ts`)는 환경 변수 마스킹까지만 하므로, 아래 셋 중 빠진 것을 Phase 5 에서 채운다.
+기준 구현은 toolkit 이 제공한다 — 배너는 `printStartupBanner`, 요청 로그는 미들웨어 체인의
+`responseLoggerMiddleware` 다(체인을 쓰지 않는 프로젝트는 아래 2절의 `withRequestLog` 래퍼).
+템플릿의 배너(`src/instrumentation.ts` + `src/startup-banner.ts`)는 환경 변수 마스킹까지만
+하므로, 아래 셋 중 빠진 것을 Phase 5 에서 채운다.
 
 ### 1. 구동 배너 — toolkit `printStartupBanner`
 
